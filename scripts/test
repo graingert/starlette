@@ -10,7 +10,7 @@ export PYTHON_VERSION=`python -c "$VERSION_SCRIPT"`
 
 set -x
 
-PYTHONPATH=. ${PREFIX}pytest --ignore venv --cov-config tests/.ignore_lifespan -W ignore::DeprecationWarning --cov=starlette --cov=tests --cov-fail-under=100 --cov-report=term-missing ${@}
+PYTHONPATH=. ${PREFIX}pytest --cov-fail-under=100 ${@}
 ${PREFIX}mypy starlette --ignore-missing-imports --disallow-untyped-defs
 ${PREFIX}autoflake --recursive starlette tests setup.py
 ${PREFIX}isort --profile=black --combine-as --check starlette tests setup.py
