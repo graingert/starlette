@@ -10,7 +10,7 @@ ujson
 
 # Testing
 autoflake
-black==19.10b0
+black
 databases[sqlite]
 isort==5.*
 mypy
