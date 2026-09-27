@@ -365,6 +365,21 @@ def test_file_response_with_range_header(tmp_path: Path, test_client_factory: Te
     assert response.headers["content-range"] == f"bytes 0-4/{len(content)}"
 
 
+def test_file_response_ignores_weak_if_range(tmp_path: Path, test_client_factory: TestClientFactory) -> None:
+    content = b"file content"
+    path = tmp_path / "hello.txt"
+    path.write_bytes(content)
+    etag = 'W/"a_weak_etag"'
+    app = FileResponse(path=path, headers={"etag": etag})
+    client = test_client_factory(app)
+
+    response = client.get("/", headers={"range": "bytes=0-4", "if-range": etag})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.content == content
+    assert "content-range" not in response.headers
+
+
 @pytest.mark.anyio
 async def test_file_response_with_pathsend(tmpdir: Path) -> None:
     path = tmpdir / "xyz"
