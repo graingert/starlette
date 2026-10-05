@@ -1,10 +1,11 @@
 import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
 import pytest
 
 from starlette.middleware.wsgi import WSGIMiddleware, build_environ
+from starlette.types import Message, Scope
 from tests.types import TestClientFactory
 
 WSGIResponse = Iterable[bytes]
@@ -102,6 +103,46 @@ def test_wsgi_exc_info(test_client_factory: TestClientFactory) -> None:
     response = client.get("/")
     assert response.status_code == 500
     assert response.text == "Internal Server Error"
+
+
+@pytest.mark.anyio
+async def test_wsgi_client_disconnect_on_send() -> None:
+    class ServerDisconnectError(OSError):
+        pass
+
+    error = ServerDisconnectError("Disconnected")
+
+    def stream_forever(environ: Environment, start_response: StartResponse) -> Iterator[bytes]:
+        start_response("200 OK", [("Content-Type", "text/plain; charset=utf-8")])
+        while True:
+            yield b"chunk"
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Message) -> None:
+        # Simulate an ASGI spec 2.4 server whose client disconnected mid-response.
+        if message["type"] == "http.response.body":
+            raise error
+
+    scope: Scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/",
+        "root_path": "",
+        "query_string": b"",
+        "headers": [],
+        "client": ("127.0.0.1", 1453),
+        "server": ("testserver", 80),
+        "asgi": {"spec_version": "2.4"},
+    }
+    with pytest.raises(ServerDisconnectError) as exc:
+        await WSGIMiddleware(stream_forever)(scope, receive, send)
+
+    # The server's error must propagate unchanged, not wrapped in an ExceptionGroup.
+    assert exc.value is error
 
 
 def test_build_environ() -> None:
