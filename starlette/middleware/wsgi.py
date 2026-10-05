@@ -148,15 +148,19 @@ class WSGIResponder:
         environ: dict[str, Any],
         start_response: Callable[..., Any],
     ) -> None:
-        try:
-            for chunk in self.app(environ, start_response):
+        for chunk in self.app(environ, start_response):
+            try:
                 anyio.from_thread.run(
                     self.stream_send.send,
                     {"type": "http.response.body", "body": chunk, "more_body": True},
                 )
+            except anyio.BrokenResourceError:
+                # The sender has stopped, e.g. because the client disconnected (ASGI spec 2.4),
+                # so let the task group raise the sender's error alone.
+                return
 
+        try:
             anyio.from_thread.run(self.stream_send.send, {"type": "http.response.body", "body": b""})
         except anyio.BrokenResourceError:
-            # The sender has stopped, e.g. because the client disconnected (ASGI spec 2.4),
-            # so let the task group raise the sender's error alone.
+            # As above, the sender has stopped and its error is raised by the task group.
             return
